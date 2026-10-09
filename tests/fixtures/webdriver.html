@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>WhaleDriver integration fixture</title>
+  </head>
+  <body>
+    <label for="name">Name</label>
+    <input id="name" type="text">
+    <button id="greet" type="button">Greet</button>
+    <p id="greeting" aria-live="polite"></p>
+    <iframe id="frame" title="Test frame" srcdoc="<p id='inside'>Frame content</p>"></iframe>
+    <script>
+      document.getElementById("greet").addEventListener("click", () => {
+        const name = document.getElementById("name").value;
+        document.getElementById("greeting").textContent = `Hello, ${name}!`;
+      });
+    </script>
+  </body>
+</html>

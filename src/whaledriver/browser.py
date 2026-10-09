@@ -21,6 +21,7 @@ from typing import Any
 import psutil
 import websocket
 
+from whaledriver._process_job import ProcessJob
 from whaledriver.errors import BrowserNotFoundError, BrowserProbeError
 
 
@@ -97,6 +98,7 @@ def _stop_probe(
     process: subprocess.Popen,
     owned_children: dict[int, psutil.Process],
     debugger_url: str | None,
+    job: ProcessJob | None = None,
 ) -> None:
     with contextlib.suppress(psutil.Error):
         parent = psutil.Process(process.pid)
@@ -128,6 +130,8 @@ def _stop_probe(
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=2)
+    if job is not None:
+        job.close()
     _, alive = psutil.wait_procs(list(owned_children.values()), timeout=1)
     for child in alive:
         with contextlib.suppress(psutil.Error):
@@ -177,11 +181,20 @@ def probe_browser(binary: str | Path | None = None, *, timeout: float = 15) -> B
             f"--user-data-dir={profile}",
             "about:blank",
         ]
+        job = None
+        process = None
         try:
+            job = ProcessJob()
             process = subprocess.Popen(
                 command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
+            job.assign(process)
         except OSError as error:
+            if job is not None:
+                job.close()
+            if process is not None and process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
             raise BrowserProbeError(f"Could not start Whale: {error}") from error
         owned_children: dict[int, psutil.Process] = {}
         debugger_url = None
@@ -223,4 +236,7 @@ def probe_browser(binary: str | Path | None = None, *, timeout: float = 15) -> B
                 time.sleep(0.05)
             raise BrowserProbeError(f"Whale did not open DevTools within {timeout:g} seconds.")
         finally:
-            _stop_probe(process, owned_children, debugger_url)
+            try:
+                _stop_probe(process, owned_children, debugger_url, job)
+            finally:
+                job.close()

@@ -196,6 +196,36 @@ def test_explicit_driver_bypasses_platform_and_network(tmp_path, monkeypatch):
     )
 
 
+def test_portable_backend_is_used_before_cache_or_network(tmp_path, monkeypatch):
+    launcher = tmp_path / "whaledriver.exe"
+    launcher.touch()
+    backend = tmp_path / "drivers/win64/chromedriver.exe"
+    backend.parent.mkdir(parents=True)
+    backend.touch()
+    monkeypatch.setattr("whaledriver.manager.sys.frozen", True, raising=False)
+    monkeypatch.setattr("whaledriver.manager.sys.executable", str(launcher))
+    monkeypatch.setattr("whaledriver.manager.driver_platform", lambda: "win64")
+    monkeypatch.setattr("whaledriver.manager.verify_driver", lambda *_: DRIVER)
+    manager = DriverManager(tmp_path / "empty-cache", offline=True)
+    assert manager.install(ENGINE) == backend
+
+
+def test_incompatible_portable_backend_reports_a_mismatch_instead_of_downloading(
+    tmp_path, monkeypatch
+):
+    backend = tmp_path / "chromedriver.exe"
+    backend.touch()
+    monkeypatch.setattr("whaledriver.manager.driver_platform", lambda: "win64")
+    monkeypatch.setattr("whaledriver.manager.bundled_driver_path", lambda _: backend)
+
+    def mismatch(*_):
+        raise DriverVersionError("Bundled ChromeDriver does not match the browser")
+
+    monkeypatch.setattr("whaledriver.manager.verify_driver", mismatch)
+    with pytest.raises(DriverVersionError, match="does not match"):
+        DriverManager(tmp_path).install(ENGINE)
+
+
 @pytest.mark.integration
 def test_install_and_verify_driver_for_installed_whale():
     from whaledriver.browser import probe_browser

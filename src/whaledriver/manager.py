@@ -80,11 +80,8 @@ def _check_engine_version(version: str) -> None:
         raise DriverVersionError("Automatic driver selection requires Chromium 115 or newer.")
 
 
-def verify_driver(
-    executable: str | Path, chromium_version: str, *, expected_version: str | None = None
-) -> str:
-    """Check executable identity and engine compatibility before starting a service."""
-    _check_engine_version(chromium_version)
+def read_driver_version(executable: str | Path) -> str:
+    """Read an executable's identity without assuming that a browser is installed."""
     path = Path(executable).expanduser().resolve()
     if not path.is_file():
         raise DriverVersionError(f"ChromeDriver executable does not exist: {path}")
@@ -97,7 +94,15 @@ def verify_driver(
     match = re.search(r"\bChromeDriver (\d+\.\d+\.\d+\.\d+)\b", result.stdout)
     if result.returncode != 0 or not match:
         raise DriverVersionError(f"The executable at {path} did not report a ChromeDriver version.")
-    driver_version = match.group(1)
+    return match.group(1)
+
+
+def verify_driver(
+    executable: str | Path, chromium_version: str, *, expected_version: str | None = None
+) -> str:
+    """Check executable identity and engine compatibility before starting a service."""
+    _check_engine_version(chromium_version)
+    driver_version = read_driver_version(executable)
     if driver_version.split(".")[0] != chromium_version.split(".")[0]:
         raise DriverVersionError(
             f"ChromeDriver {driver_version} does not match Whale's Chromium {chromium_version}. "
@@ -108,6 +113,15 @@ def verify_driver(
             f"ChromeDriver reported {driver_version}; expected cached release {expected_version}."
         )
     return driver_version
+
+
+def bundled_driver_path(target: str) -> Path | None:
+    """Find the replaceable backend beside a frozen portable executable."""
+    if not getattr(sys, "frozen", False):
+        return None
+    filename = "chromedriver.exe" if target.startswith("win") else "chromedriver"
+    executable = Path(sys.executable).resolve().parent / "drivers" / target / filename
+    return executable if executable.is_file() else None
 
 
 class DriverManager:
@@ -218,6 +232,9 @@ class DriverManager:
             verify_driver(executable, chromium_version)
             return executable
         target = driver_platform()
+        if bundled := bundled_driver_path(target):
+            verify_driver(bundled, chromium_version)
+            return bundled
         if cached := self._cached_driver(chromium_version, target):
             return cached
         if self.offline:

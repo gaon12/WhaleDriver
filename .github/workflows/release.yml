@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out the version tag
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - name: Install uv and select Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install Python and locked build dependencies
+        run: |
+          uv python install
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv sync --locked --group dev --group build
+      - name: Check tag and package versions
+        run: |
+          @'
+          import os
+          import tomllib
+          from pathlib import Path
+          from whaledriver import __version__
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          assert version == __version__, 'Package and module versions must match'
+          assert os.environ['RELEASE_TAG'] == 'v' + version, 'Tag must match the package version'
+          assert Path('releases', os.environ['RELEASE_TAG'] + '.md').is_file(), 'Release notes are required'
+          '@ | uv run python -
+      - name: Check formatting and linting
+        run: |
+          uv run ruff format --check .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run mdformat --check README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs drivers releases
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run ruff check .
+      - name: Run browser-independent tests
+        run: uv run pytest
+      - name: Build Python distributions
+        run: uv build
+      - name: Build the portable Windows distribution
+        run: .\build.ps1
+      - name: Upload and publish the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem -LiteralPath dist -File | Where-Object {
+            $_.Name.EndsWith('.whl') -or $_.Name.EndsWith('.tar.gz') -or
+            $_.Name.EndsWith('.zip') -or $_.Name.EndsWith('.zip.sha256')
+          } | ForEach-Object { $_.FullName })
+          if ($assets.Count -ne 4) { throw 'Expected a wheel, source archive, portable ZIP, and checksum.' }
+          $existing = gh release view $env:RELEASE_TAG --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if ($existing -ne 'true') { throw 'This release is already published. Use a new version tag.' }
+            gh release upload $env:RELEASE_TAG @assets --clobber
+          } else {
+            gh release create $env:RELEASE_TAG @assets --verify-tag --draft --prerelease --title "WhaleDriver $env:RELEASE_TAG" --notes-file "releases/$env:RELEASE_TAG.md"
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }
+          gh release edit $env:RELEASE_TAG --draft=false --prerelease --latest=false
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

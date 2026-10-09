@@ -35,7 +35,7 @@ jobs:
       - name: Check Python formatting
         run: uv run ruff format --check .
       - name: Check documentation formatting
-        run: uv run mdformat --check README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs
+        run: uv run mdformat --check README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs drivers releases
       - name: Lint Python code
         run: uv run ruff check .
       - name: Run tests without a browser installation

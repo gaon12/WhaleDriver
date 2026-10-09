@@ -21,6 +21,9 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
+[project.scripts]
+whaledriver = "whaledriver.cli:main"
+
 [dependency-groups]
 dev = ["pytest>=8.3,<10", "ruff>=0.9,<1"]
 

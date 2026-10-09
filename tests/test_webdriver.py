@@ -1,10 +1,19 @@
+import contextlib
+import json
+import queue
+import subprocess
+import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import psutil
 import pytest
+from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as conditions
@@ -137,3 +146,52 @@ def test_selenium_controls_real_whale_and_quit_removes_the_session_profile(fixtu
     while profile.exists() and time.monotonic() < deadline:
         time.sleep(0.1)
     assert not profile.exists()
+
+
+@pytest.mark.integration
+def test_remote_client_can_use_the_cli_service(fixture_url):
+    info = probe_browser()
+    DriverManager().install(info.chromium_version)
+    process = subprocess.Popen(
+        [sys.executable, "-m", "whaledriver", "serve", "--port", "0", "--offline"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    lines = queue.Queue()
+    reader = threading.Thread(target=lambda: lines.put(process.stdout.readline()), daemon=True)
+    reader.start()
+    service_url = None
+    try:
+        payload = json.loads(lines.get(timeout=30))
+        service_url = payload["url"]
+        options = Options(headless=True)
+        options.binary_location = payload["binary"]
+        with webdriver.Remote(command_executor=service_url, options=options) as driver:
+            driver.get(fixture_url)
+            assert driver.title == "WhaleDriver integration fixture"
+            assert "Whale/" in driver.execute_script("return navigator.userAgent")
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(service_url + "/shutdown", timeout=3):
+            pass
+        assert process.wait(timeout=10) == 0
+    finally:
+        if process.poll() is None:
+            if service_url:
+                with (
+                    contextlib.suppress(OSError, urllib.error.URLError),
+                    urllib.request.urlopen(service_url + "/shutdown", timeout=3),
+                ):
+                    pass
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=5)
+        if process.poll() is None:
+            with contextlib.suppress(psutil.Error):
+                for child in psutil.Process(process.pid).children(recursive=True):
+                    with contextlib.suppress(psutil.Error):
+                        child.terminate()
+            process.terminate()
+            process.wait(timeout=5)
+        reader.join(timeout=3)
+        process.stdout.close()
+        process.stderr.close()

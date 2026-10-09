@@ -24,6 +24,11 @@ classifiers = [
 [project.scripts]
 whaledriver = "whaledriver.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/gaon12/WhaleDriver"
+Repository = "https://github.com/gaon12/WhaleDriver"
+Issues = "https://github.com/gaon12/WhaleDriver/issues"
+
 [dependency-groups]
 build = [
     "pyinstaller>=6.11,<7",

@@ -33,6 +33,17 @@ distribution. NAVER owns Whale; this independent project has no NAVER affiliatio
 - Run CLI diagnostics and offline installation through the installed entry point.
 - Start a local CLI service, create a remote Selenium session using the reported
   Whale binary, and shut down the service after the session quits.
+- Build a Windows x64 portable ZIP with PyInstaller 6.22.3.
+- Run the compiled CLI and verify that offline installation selects its bundled
+  ChromeDriver instead of the per-user cache.
+- Open a real headless Whale session through the compiled service and stop it cleanly.
+- Verify the ZIP integrity, bundled backend identity, required license files,
+  and SHA-256 checksum.
+
+The initial [GitHub validation run](https://github.com/gaon12/WhaleDriver/actions/runs/37929269063)
+passed formatting, linting, browser-independent tests, and package builds on
+Windows, macOS, and Linux with Python 3.10 and 3.13. This is separate from real
+Whale validation, which was performed on Windows x64 only.
 
 ## Unverified behavior
 

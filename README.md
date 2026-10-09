@@ -171,6 +171,60 @@ an automatically assigned port, `--verbose` for ChromeDriver logging, or
 The CLI is not a drop-in native executable for Selenium's `Service` constructor;
 use `Whale`, or supply the executable printed by `install` and a Whale binary.
 
+## Windows portable release
+
+Download the Windows x64 ZIP from [GitHub Releases](https://github.com/gaon12/WhaleDriver/releases)
+and extract the entire `whaledriver` folder. Keep `_internal`, `drivers`, and the
+license files beside `whaledriver.exe`. Python is included in this distribution;
+it does not need to be installed on the target computer. Whale must be installed.
+
+```powershell
+.\whaledriver.exe doctor
+.\whaledriver.exe serve --port 9515 --offline
+```
+
+The included backend is used before the download cache. Its Chromium major must
+match the installed Whale engine. A mismatch reports an error so you can replace
+the backend, supply `--driver-path`, or rebuild for the new engine. The portable
+server uses the same remote Chrome options described below.
+
+## Rebuild after replacing ChromeDriver
+
+Install Python 3.10 or newer and uv on the build computer. Extract the official
+Windows x64 ChromeDriver archive into `drivers/win64/`, preserving these files:
+
+```text
+drivers/win64/chromedriver.exe
+drivers/win64/LICENSE.chromedriver
+drivers/win64/THIRD_PARTY_NOTICES.chromedriver
+```
+
+Replace all three files when updating the backend, then double-click `build.cmd`
+or run the following command. The builder installs locked build dependencies,
+reads the replacement's version, builds the standalone program, collects notices,
+and writes the portable ZIP and SHA-256 checksum into `dist/`.
+
+```powershell
+.\build.cmd
+# Also verify the compiled program against the installed Whale:
+.\build.cmd --smoke-test
+```
+
+When the input directory is empty, the first build automatically installs the
+official driver selected by `releases/driver.json`. Use
+`.\build.cmd --chromium-version 150.0.7871.252` to request another engine version.
+When a replacement already exists, it takes priority and an explicit engine
+version checks its major version. Builds currently require Windows x64; they
+can run without Whale unless `--smoke-test` is selected. No C++ toolchain is needed.
+
+`build.ps1` and `uv run --group build --group dev python scripts/build_release.py`
+provide the same build process. See [drivers/README.md](drivers/README.md).
+
+Tags matching the package version, such as `v0.1.0`, trigger the release workflow.
+It runs formatting, linting, and regular tests, builds the Python distributions
+and Windows ZIP, uploads them to a draft release, then publishes it as a prerelease.
+See [the release instructions](releases/README.md) for future versions.
+
 ## Compatibility and limits
 
 | Platform                | Automatic download          | Real Whale validation                  |
@@ -207,7 +261,7 @@ Use Python 3.10 or newer and [uv](https://docs.astral.sh/uv/).
 uv sync --group dev
 uv run ruff format .
 uv run ruff check .
-uv run mdformat README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs
+uv run mdformat README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs drivers releases
 uv run pytest
 uv run pytest --run-integration
 uv build

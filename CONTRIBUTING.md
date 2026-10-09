@@ -17,9 +17,9 @@ Complete these steps for each coherent change:
 ```powershell
 uv sync --locked --group dev
 uv run ruff format .
-uv run mdformat README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs
+uv run mdformat README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs drivers releases
 uv run ruff check .
-uv run mdformat --check README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs
+uv run mdformat --check README.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs drivers releases
 uv run pytest
 ```
 

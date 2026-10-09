@@ -25,7 +25,13 @@ classifiers = [
 whaledriver = "whaledriver.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.3,<10", "ruff>=0.9,<1"]
+dev = [
+    "mdformat>=0.7,<1",
+    "mdformat-gfm>=0.4,<1",
+    "pytest>=8.3,<10",
+    "pyyaml>=6,<7",
+    "ruff>=0.9,<1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/whaledriver"]

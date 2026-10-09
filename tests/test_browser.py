@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from whaledriver.browser import _parse_version_info, _stop_probe, find_whale, probe_browser
+from whaledriver.browser import (
+    _parse_version_info,
+    _stop_probe,
+    _temporary_profile,
+    find_whale,
+    probe_browser,
+)
 from whaledriver.errors import BrowserNotFoundError, BrowserProbeError
 
 
@@ -97,10 +103,32 @@ def test_cleanup_terminates_its_process_when_devtools_is_unavailable():
             process.wait(timeout=5)
 
 
+def test_profile_cleanup_retries_transient_windows_file_locks(monkeypatch):
+    class LockedProfile:
+        name = "owned-temporary-profile"
+        attempts = 0
+
+        def cleanup(self):
+            self.attempts += 1
+            if self.attempts < 3:
+                raise PermissionError("Profile handle has not been released yet")
+
+    profile = LockedProfile()
+    monkeypatch.setattr("whaledriver.browser.tempfile.TemporaryDirectory", lambda **_: profile)
+    with _temporary_profile() as name:
+        assert name == profile.name
+    assert profile.attempts == 3
+
+
 @pytest.mark.integration
-def test_installed_whale_reports_distinct_engine_and_product_versions():
+@pytest.mark.parametrize("attempt", range(3))
+def test_installed_whale_reports_distinct_engine_and_product_versions(
+    attempt, tmp_path, monkeypatch
+):
+    monkeypatch.setattr("whaledriver.browser.tempfile.tempdir", str(tmp_path))
     info = probe_browser()
     assert info.binary.is_file()
     assert int(info.chromium_version.split(".")[0]) >= 115
     assert info.whale_version != info.chromium_version
     assert f"Whale/{info.whale_version}" in info.user_agent
+    assert not list(tmp_path.glob("whaledriver-probe-*"))

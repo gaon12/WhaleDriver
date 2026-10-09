@@ -13,6 +13,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -97,6 +98,9 @@ def _stop_probe(
     owned_children: dict[int, psutil.Process],
     debugger_url: str | None,
 ) -> None:
+    with contextlib.suppress(psutil.Error):
+        parent = psutil.Process(process.pid)
+        owned_children.update({child.pid: child for child in parent.children(recursive=True)})
     if debugger_url:
         with contextlib.suppress(OSError, websocket.WebSocketException):
             connection = websocket.create_connection(
@@ -135,13 +139,33 @@ def _stop_probe(
     psutil.wait_procs(alive, timeout=2)
 
 
+@contextlib.contextmanager
+def _temporary_profile() -> Iterator[str]:
+    profile = tempfile.TemporaryDirectory(prefix="whaledriver-probe-")
+    try:
+        yield profile.name
+    finally:
+        # Windows can release profile file handles shortly after a process exits.
+        # Retry deletion briefly, but report a persistent failure instead of leaving
+        # an undeleted profile silently.
+        deadline = time.monotonic() + 3
+        while True:
+            try:
+                profile.cleanup()
+                break
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.1)
+
+
 def probe_browser(binary: str | Path | None = None, *, timeout: float = 15) -> BrowserInfo:
     """Read DevTools metadata from a temporary headless browser and close it."""
     if timeout <= 0:
         raise ValueError("Browser probe timeout must be greater than zero.")
     executable = find_whale(binary)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with tempfile.TemporaryDirectory(prefix="whaledriver-probe-") as profile:
+    with _temporary_profile() as profile:
         command = [
             str(executable),
             "--headless=new",

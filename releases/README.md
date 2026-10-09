@@ -24,7 +24,9 @@ or `whaledriver.exe serve --offline` from that folder.
 Before making a new version:
 
 1. Update `pyproject.toml` and `src/whaledriver/__init__.py` to the same version.
-1. Update `releases/driver.json` if the automatic backend selection should change.
+1. Set `whale_version` and `chromium_version` in `releases/driver.json` to the full
+   browser versions verified for this release. The Chromium value also selects
+   the automatic backend download.
 1. Add `releases/v<version>.md` with clear English release notes.
 1. Format, lint, test, build, and commit each coherent change.
 1. Push `main`, then create and push an annotated version tag.
@@ -45,6 +47,18 @@ After successful builds, the workflow creates a draft GitHub release with the
 wheel, source archive, portable ZIP, and ZIP checksum. It publishes the release
 as a prerelease only after upload succeeds. It does not replace an already
 published release. Choose a new version tag for changed published artifacts.
+
+The GitHub release title uses `<Whale version> / <Chromium version>`, for example
+`5.39.412.57 / 150.0.7871.252`. Both values come from `releases/driver.json` and
+must contain four numeric components. Use the full Chromium engine version
+reported by the browser diagnostic command, because the user-agent string may
+shorten that version. Package versions, Git tags such as `v0.1.0`, and download
+filenames continue to identify the WhaleDriver code version separately.
+
+Published releases and their downloads appear on the repository's
+[Releases page](https://github.com/gaon12/WhaleDriver/releases).
+GitHub uses `/releases/tag/<tag>` as the address of an individual release;
+the tag connects that published release to its source commit.
 
 The workflow can also be dispatched manually with an existing version tag to
 recover a failed build or incomplete draft. Add a new release-note file for each

@@ -1,9 +1,10 @@
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from whaledriver.browser import _parse_version_info, find_whale, probe_browser
+from whaledriver.browser import _parse_version_info, _stop_probe, find_whale, probe_browser
 from whaledriver.errors import BrowserNotFoundError, BrowserProbeError
 
 
@@ -83,6 +84,17 @@ def test_failed_process_is_reported_and_temporary_profile_is_removed(tmp_path, m
 def test_timeout_must_be_positive():
     with pytest.raises(ValueError, match="greater than zero"):
         probe_browser(timeout=0)
+
+
+def test_cleanup_terminates_its_process_when_devtools_is_unavailable():
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        _stop_probe(process, {}, None)
+        assert process.poll() is not None
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
 
 
 @pytest.mark.integration

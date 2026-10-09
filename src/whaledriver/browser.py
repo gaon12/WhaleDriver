@@ -93,7 +93,7 @@ def _parse_version_info(binary: Path, payload: dict[str, Any]) -> BrowserInfo:
 
 
 def _stop_probe(
-    process: psutil.Popen,
+    process: subprocess.Popen,
     owned_children: dict[int, psutil.Process],
     debugger_url: str | None,
 ) -> None:
@@ -107,12 +107,24 @@ def _stop_probe(
             )
             try:
                 connection.send(json.dumps({"id": 1, "method": "Browser.close"}))
+                connection.recv()
             finally:
                 connection.close()
     with contextlib.suppress(psutil.Error):
-        owned_children.update({child.pid: child for child in process.children(recursive=True)})
-    processes = [process, *owned_children.values()]
-    _, alive = psutil.wait_procs(processes, timeout=3)
+        parent = psutil.Process(process.pid)
+        owned_children.update({child.pid: child for child in parent.children(recursive=True)})
+    # Keep the original subprocess handle for the root. A process identity read
+    # immediately after Windows starts Whale may not yet have a stable creation time.
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+    _, alive = psutil.wait_procs(list(owned_children.values()), timeout=1)
     for child in alive:
         with contextlib.suppress(psutil.Error):
             child.terminate()
@@ -121,8 +133,6 @@ def _stop_probe(
         with contextlib.suppress(psutil.Error):
             child.kill()
     psutil.wait_procs(alive, timeout=2)
-    with contextlib.suppress(subprocess.TimeoutExpired):
-        process.wait(timeout=1)
 
 
 def probe_browser(binary: str | Path | None = None, *, timeout: float = 15) -> BrowserInfo:
@@ -144,7 +154,9 @@ def probe_browser(binary: str | Path | None = None, *, timeout: float = 15) -> B
             "about:blank",
         ]
         try:
-            process = psutil.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = subprocess.Popen(
+                command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
         except OSError as error:
             raise BrowserProbeError(f"Could not start Whale: {error}") from error
         owned_children: dict[int, psutil.Process] = {}
@@ -155,7 +167,10 @@ def probe_browser(binary: str | Path | None = None, *, timeout: float = 15) -> B
             while time.monotonic() < deadline:
                 with contextlib.suppress(psutil.Error):
                     owned_children.update(
-                        {child.pid: child for child in process.children(recursive=True)}
+                        {
+                            child.pid: child
+                            for child in psutil.Process(process.pid).children(recursive=True)
+                        }
                     )
                 if port_file.is_file():
                     try:

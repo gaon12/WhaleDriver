@@ -25,6 +25,9 @@ classifiers = [
 whaledriver = "whaledriver.cli:main"
 
 [dependency-groups]
+build = [
+    "pyinstaller>=6.11,<7",
+]
 dev = [
     "mdformat>=0.7,<1",
     "mdformat-gfm>=0.4,<1",
@@ -38,6 +41,7 @@ packages = ["src/whaledriver"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra"
 markers = ["integration: launches the installed Whale browser and may download ChromeDriver"]
 

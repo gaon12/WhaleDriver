@@ -41,10 +41,12 @@ jobs:
           uv python install
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv sync --locked --group dev --group build
-      - name: Check tag and package versions
+      - name: Check release versions and prepare the title
         run: |
           @'
+          import json
           import os
+          import re
           import tomllib
           from pathlib import Path
           from whaledriver import __version__
@@ -52,6 +54,14 @@ jobs:
           assert version == __version__, 'Package and module versions must match'
           assert os.environ['RELEASE_TAG'] == 'v' + version, 'Tag must match the package version'
           assert Path('releases', os.environ['RELEASE_TAG'] + '.md').is_file(), 'Release notes are required'
+          metadata = json.loads(Path('releases/driver.json').read_text(encoding='utf-8'))
+          for name in ('whale_version', 'chromium_version'):
+              value = metadata.get(name)
+              valid_version = isinstance(value, str) and re.fullmatch(r'[0-9]+(?:\.[0-9]+){3}', value)
+              assert valid_version, f'{name} must contain four numeric version components'
+          title = f"{metadata['whale_version']} / {metadata['chromium_version']}"
+          with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as environment:
+              environment.write(f'RELEASE_TITLE={title}\n')
           '@ | uv run python -
       - name: Check formatting and linting
         run: |
@@ -80,8 +90,8 @@ jobs:
             if ($existing -ne 'true') { throw 'This release is already published. Use a new version tag.' }
             gh release upload $env:RELEASE_TAG @assets --clobber
           } else {
-            gh release create $env:RELEASE_TAG @assets --verify-tag --draft --prerelease --title "WhaleDriver $env:RELEASE_TAG" --notes-file "releases/$env:RELEASE_TAG.md"
+            gh release create $env:RELEASE_TAG @assets --verify-tag --draft --prerelease --title $env:RELEASE_TITLE --notes-file "releases/$env:RELEASE_TAG.md"
           }
           if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }
-          gh release edit $env:RELEASE_TAG --draft=false --prerelease --latest=false
+          gh release edit $env:RELEASE_TAG --title $env:RELEASE_TITLE --draft=false --prerelease --latest=false
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }
